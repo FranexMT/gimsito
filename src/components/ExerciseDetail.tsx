@@ -1,18 +1,33 @@
 "use client";
 
+import { useState } from "react";
 import { useWorkoutData } from "@/context/DataContext";
 import { computeExerciseRank } from "@/lib/ranking";
-import type { Exercise } from "@/types/exercise";
+import type { Exercise, WorkoutLog } from "@/types/exercise";
 import ExerciseGif from "@/components/ExerciseGif";
 import TierBadge from "@/components/TierBadge";
 import LogSetForm from "@/components/LogSetForm";
 import { CATEGORY_LABEL_ES } from "@/lib/exercises";
 
 export default function ExerciseDetail({ exercise }: { exercise: Exercise }) {
-  const { logs: allLogs, profile } = useWorkoutData();
+  const { logs: allLogs, profile, deleteLog } = useWorkoutData();
   const logs = allLogs.filter((l) => l.exerciseId === exercise.id).sort((a, b) => b.date.localeCompare(a.date));
 
   const rank = computeExerciseRank(exercise, allLogs, profile.bodyWeightKg);
+
+  const [editingLog, setEditingLog] = useState<WorkoutLog | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
+
+  async function handleDelete(id: number) {
+    if (confirmDeleteId !== id) {
+      setConfirmDeleteId(id);
+      setTimeout(() => setConfirmDeleteId((curr) => (curr === id ? null : curr)), 3000);
+      return;
+    }
+    setConfirmDeleteId(null);
+    if (editingLog?.id === id) setEditingLog(null);
+    await deleteLog(id);
+  }
 
   return (
     <div className="flex flex-col gap-6">
@@ -56,7 +71,12 @@ export default function ExerciseDetail({ exercise }: { exercise: Exercise }) {
       </div>
 
       <div style={{ borderTop: "1px solid var(--border)" }}>
-        <LogSetForm exerciseId={exercise.id} />
+        <LogSetForm
+          key={editingLog?.id ?? "new"}
+          exerciseId={exercise.id}
+          editingLog={editingLog}
+          onDoneEditing={() => setEditingLog(null)}
+        />
       </div>
 
       {logs.length > 0 && (
@@ -68,12 +88,30 @@ export default function ExerciseDetail({ exercise }: { exercise: Exercise }) {
             {logs.slice(0, 8).map((log) => (
               <li
                 key={log.id}
-                className="flex justify-between py-2 font-mono text-[11px]"
+                className="flex items-center justify-between gap-2 py-2 font-mono text-[11px]"
                 style={{ borderTop: "1px solid var(--border)", color: "var(--text-secondary)" }}
               >
-                <span>{new Date(log.date).toLocaleDateString("es-MX", { day: "2-digit", month: "short" })}</span>
-                <span>{log.weight > 0 ? `${log.weight}kg × ${log.reps}` : `${log.reps} rep · peso corporal`}</span>
-                {log.weight > 0 && <span style={{ color: "var(--text-primary)" }}>1RM {log.oneRepMax}kg</span>}
+                <span className="shrink-0">{new Date(log.date).toLocaleDateString("es-MX", { day: "2-digit", month: "short" })}</span>
+                <span className="flex-1 truncate text-center">
+                  {log.weight > 0 ? `${log.weight}kg × ${log.reps}` : `${log.reps} rep · peso corporal`}
+                </span>
+                {log.weight > 0 && (
+                  <span className="shrink-0" style={{ color: "var(--text-primary)" }}>
+                    1RM {log.oneRepMax}kg
+                  </span>
+                )}
+                <span className="flex shrink-0 gap-2">
+                  <button type="button" onClick={() => setEditingLog(log)} style={{ color: "var(--text-secondary)" }}>
+                    Editar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => log.id && handleDelete(log.id)}
+                    style={{ color: confirmDeleteId === log.id ? "var(--accent)" : "var(--text-disabled)" }}
+                  >
+                    {confirmDeleteId === log.id ? "¿Seguro?" : "Borrar"}
+                  </button>
+                </span>
               </li>
             ))}
           </ul>

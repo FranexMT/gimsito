@@ -12,9 +12,16 @@ create table if not exists public.profiles (
   avatar_url text,
   body_weight_kg numeric(6, 2) default 70,
   height_cm numeric(5, 1),
+  global_score integer not null default 0,
+  global_level text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+-- Instalaciones existentes: agrega las columnas del leaderboard si faltan.
+alter table public.profiles add column if not exists global_score integer not null default 0;
+alter table public.profiles add column if not exists global_level text;
+create index if not exists profiles_global_score_idx on public.profiles (global_score desc);
 
 comment on table public.profiles is 'Datos de perfil por usuario, espejo 1:1 de auth.users.';
 

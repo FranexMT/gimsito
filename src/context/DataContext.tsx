@@ -5,6 +5,8 @@ import { supabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/context/AuthContext";
 import { estimateOneRepMax } from "@/lib/oneRepMax";
 import { ACHIEVEMENTS, isUnlocked, type AchievementContext } from "@/lib/achievements";
+import { computeExerciseRank, tierScore, globalLevel } from "@/lib/ranking";
+import { getExerciseById } from "@/lib/exercises";
 import type { WorkoutLog } from "@/types/exercise";
 
 interface ProfileData {
@@ -12,6 +14,8 @@ interface ProfileData {
   heightCm: number | null;
   bodyWeightKg: number;
   avatarUrl: string | null;
+  globalScore: number;
+  globalLevelLabel: string | null;
 }
 
 interface WorkoutLogRow {
@@ -28,6 +32,8 @@ interface ProfileRow {
   height_cm: number | null;
   body_weight_kg: number | null;
   avatar_url: string | null;
+  global_score: number | null;
+  global_level: string | null;
 }
 
 interface DataContextValue {
@@ -36,6 +42,8 @@ interface DataContextValue {
   unlockedAchievementIds: Set<string>;
   loading: boolean;
   addLog: (exerciseId: string, weight: number, reps: number) => Promise<void>;
+  updateLog: (id: number, weight: number, reps: number) => Promise<void>;
+  deleteLog: (id: number) => Promise<void>;
   updateProfile: (partial: Partial<{ name: string; heightCm: number | null; bodyWeightKg: number }>) => Promise<void>;
   uploadAvatar: (file: File) => Promise<void>;
   clearAllData: () => Promise<void>;
@@ -43,7 +51,14 @@ interface DataContextValue {
 
 const DataContext = createContext<DataContextValue | undefined>(undefined);
 
-const DEFAULT_PROFILE: ProfileData = { name: "", heightCm: null, bodyWeightKg: 70, avatarUrl: null };
+const DEFAULT_PROFILE: ProfileData = {
+  name: "",
+  heightCm: null,
+  bodyWeightKg: 70,
+  avatarUrl: null,
+  globalScore: 0,
+  globalLevelLabel: null,
+};
 
 function rowToLog(row: WorkoutLogRow): WorkoutLog {
   return {
@@ -62,6 +77,8 @@ function rowToProfile(row: ProfileRow): ProfileData {
     heightCm: row.height_cm,
     bodyWeightKg: Number(row.body_weight_kg ?? 70),
     avatarUrl: row.avatar_url,
+    globalScore: row.global_score ?? 0,
+    globalLevelLabel: row.global_level,
   };
 }
 
@@ -131,6 +148,29 @@ export function DataProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [logs, profile.bodyWeightKg, user, loading]);
 
+  // Recalcula el puntaje/nivel global y lo guarda en el propio perfil (publico
+  // de solo lectura) para que el leaderboard pueda ordenar sin leer logs ajenos.
+  useEffect(() => {
+    if (!user || loading) return;
+    const exerciseIds = Array.from(new Set(logs.map((l) => l.exerciseId)));
+    const ranks = exerciseIds.map((id) => computeExerciseRank(getExerciseById(id)!, logs, profile.bodyWeightKg));
+    const totalScore = ranks.reduce((sum, r) => sum + tierScore(r.tier), 0);
+    const avgTier = ranks.length > 0 ? totalScore / ranks.length : 0;
+    const levelLabel = ranks.length > 0 ? globalLevel(avgTier) : null;
+
+    if (totalScore === profile.globalScore && levelLabel === profile.globalLevelLabel) return;
+
+    (async () => {
+      const { error } = await supabase
+        .from("profiles")
+        .update({ global_score: totalScore, global_level: levelLabel })
+        .eq("id", user.id);
+      if (!error) {
+        setProfile((prev) => ({ ...prev, globalScore: totalScore, globalLevelLabel: levelLabel }));
+      }
+    })();
+  }, [logs, profile.bodyWeightKg, profile.globalScore, profile.globalLevelLabel, user, loading]);
+
   async function addLog(exerciseId: string, weight: number, reps: number) {
     if (!user) return;
     const oneRepMax = estimateOneRepMax(weight, reps);
@@ -142,6 +182,25 @@ export function DataProvider({ children }: { children: ReactNode }) {
       one_rep_max: oneRepMax,
       performed_at: new Date().toISOString(),
     });
+    if (error) throw error;
+    await refresh();
+  }
+
+  async function updateLog(id: number, weight: number, reps: number) {
+    if (!user) return;
+    const oneRepMax = estimateOneRepMax(weight, reps);
+    const { error } = await supabase
+      .from("workout_logs")
+      .update({ weight, reps, one_rep_max: oneRepMax })
+      .eq("id", id)
+      .eq("user_id", user.id);
+    if (error) throw error;
+    await refresh();
+  }
+
+  async function deleteLog(id: number) {
+    if (!user) return;
+    const { error } = await supabase.from("workout_logs").delete().eq("id", id).eq("user_id", user.id);
     if (error) throw error;
     await refresh();
   }
@@ -181,7 +240,18 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   return (
     <DataContext.Provider
-      value={{ logs, profile, unlockedAchievementIds, loading, addLog, updateProfile, uploadAvatar, clearAllData }}
+      value={{
+        logs,
+        profile,
+        unlockedAchievementIds,
+        loading,
+        addLog,
+        updateLog,
+        deleteLog,
+        updateProfile,
+        uploadAvatar,
+        clearAllData,
+      }}
     >
       {children}
     </DataContext.Provider>

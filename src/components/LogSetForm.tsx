@@ -2,14 +2,25 @@
 
 import { useState } from "react";
 import { useWorkoutData } from "@/context/DataContext";
+import type { WorkoutLog } from "@/types/exercise";
 
-export default function LogSetForm({ exerciseId }: { exerciseId: string }) {
-  const { addLog } = useWorkoutData();
-  const [weight, setWeight] = useState("");
-  const [reps, setReps] = useState("");
+interface LogSetFormProps {
+  exerciseId: string;
+  editingLog?: WorkoutLog | null;
+  onDoneEditing?: () => void;
+}
+
+/** Nota: el padre debe pasar key={editingLog?.id ?? "new"} para que el formulario
+ * se remonte con los valores iniciales correctos al entrar/salir de edición. */
+export default function LogSetForm({ exerciseId, editingLog, onDoneEditing }: LogSetFormProps) {
+  const { addLog, updateLog } = useWorkoutData();
+  const [weight, setWeight] = useState(editingLog ? String(editingLog.weight) : "");
+  const [reps, setReps] = useState(editingLog ? String(editingLog.reps) : "");
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+
+  const isEditing = !!editingLog;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -21,11 +32,16 @@ export default function LogSetForm({ exerciseId }: { exerciseId: string }) {
     setPending(true);
     setError(null);
     try {
-      await addLog(exerciseId, weightNum, repsNum);
-      setWeight("");
-      setReps("");
-      setSaved(true);
-      setTimeout(() => setSaved(false), 1500);
+      if (isEditing && editingLog?.id) {
+        await updateLog(editingLog.id, weightNum, repsNum);
+        onDoneEditing?.();
+      } else {
+        await addLog(exerciseId, weightNum, repsNum);
+        setWeight("");
+        setReps("");
+        setSaved(true);
+        setTimeout(() => setSaved(false), 1500);
+      }
     } catch {
       setError("No se pudo guardar. Revisa tu conexión e intenta de nuevo.");
     } finally {
@@ -36,7 +52,7 @@ export default function LogSetForm({ exerciseId }: { exerciseId: string }) {
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-4 py-2">
       <p className="font-mono text-[11px] uppercase tracking-[0.08em]" style={{ color: "var(--text-secondary)" }}>
-        Registrar serie
+        {isEditing ? "Editar serie" : "Registrar serie"}
       </p>
       <div className="flex gap-4">
         <label className="flex-1">
@@ -76,14 +92,26 @@ export default function LogSetForm({ exerciseId }: { exerciseId: string }) {
           [ ERROR ] {error}
         </p>
       )}
-      <button
-        type="submit"
-        disabled={pending}
-        className="rounded-full py-3 font-mono text-[11px] uppercase tracking-[0.06em] disabled:opacity-40"
-        style={{ background: "var(--text-display)", color: "var(--black)" }}
-      >
-        {saved ? "[ Guardado ]" : pending ? "···" : "Guardar serie"}
-      </button>
+      <div className="flex gap-3">
+        <button
+          type="submit"
+          disabled={pending}
+          className="flex-1 rounded-full py-3 font-mono text-[11px] uppercase tracking-[0.06em] disabled:opacity-40"
+          style={{ background: "var(--text-display)", color: "var(--black)" }}
+        >
+          {saved ? "[ Guardado ]" : pending ? "···" : isEditing ? "Guardar cambios" : "Guardar serie"}
+        </button>
+        {isEditing && (
+          <button
+            type="button"
+            onClick={onDoneEditing}
+            className="rounded-full px-5 py-3 font-mono text-[11px] uppercase tracking-[0.06em]"
+            style={{ border: "1px solid var(--border-visible)", color: "var(--text-secondary)" }}
+          >
+            Cancelar
+          </button>
+        )}
+      </div>
     </form>
   );
 }
