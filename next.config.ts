@@ -8,6 +8,11 @@ const nextConfig: NextConfig = {
         hostname: "raw.githubusercontent.com",
         pathname: "/hasaneyldrm/exercises-dataset/**",
       },
+      {
+        protocol: "https",
+        hostname: "*.supabase.co",
+        pathname: "/storage/v1/object/public/**",
+      },
     ],
   },
 };

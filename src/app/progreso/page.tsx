@@ -1,17 +1,15 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useLiveQuery } from "dexie-react-hooks";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
-import { db } from "@/lib/db";
+import { useWorkoutData } from "@/context/DataContext";
 import { getExerciseById } from "@/lib/exercises";
 
 export default function ProgressPage() {
-  const logs = useLiveQuery(() => db.logs.toArray(), []);
+  const { logs } = useWorkoutData();
   const [selected, setSelected] = useState<string | null>(null);
 
   const exerciseOptions = useMemo(() => {
-    if (!logs) return [];
     const ids = Array.from(new Set(logs.map((l) => l.exerciseId)));
     return ids
       .map((id) => getExerciseById(id))
@@ -22,7 +20,7 @@ export default function ProgressPage() {
   const activeId = selected ?? exerciseOptions[0]?.id ?? null;
 
   const activeLogs = useMemo(
-    () => (logs && activeId ? logs.filter((l) => l.exerciseId === activeId).sort((a, b) => a.date.localeCompare(b.date)) : []),
+    () => (activeId ? logs.filter((l) => l.exerciseId === activeId).sort((a, b) => a.date.localeCompare(b.date)) : []),
     [logs, activeId]
   );
 

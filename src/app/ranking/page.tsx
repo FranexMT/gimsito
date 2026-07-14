@@ -1,8 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useLiveQuery } from "dexie-react-hooks";
-import { db } from "@/lib/db";
+import { useWorkoutData } from "@/context/DataContext";
 import { exercises } from "@/lib/exercises";
 import { computeExerciseRank, tierScore } from "@/lib/ranking";
 import TierBadge from "@/components/TierBadge";
@@ -26,10 +25,10 @@ function SegmentedBar({ progress }: { progress: number }) {
 }
 
 export default function RankingPage() {
-  const logs = useLiveQuery(() => db.logs.toArray(), []);
-  const bodyWeight = useLiveQuery(async () => (await db.settings.get("bodyWeight"))?.bodyWeightKg ?? 70, []);
+  const { logs, profile, loading } = useWorkoutData();
+  const bodyWeight = profile.bodyWeightKg;
 
-  if (!logs || bodyWeight === undefined) {
+  if (loading) {
     return (
       <p className="font-mono text-xs" style={{ color: "var(--text-disabled)" }}>
         [ Cargando ]

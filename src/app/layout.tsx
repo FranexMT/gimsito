@@ -2,6 +2,9 @@ import type { Metadata, Viewport } from "next";
 import { Doto, Space_Grotesk, Space_Mono } from "next/font/google";
 import "./globals.css";
 import BottomNav from "@/components/BottomNav";
+import AuthGate from "@/components/AuthGate";
+import { AuthProvider } from "@/context/AuthContext";
+import { DataProvider } from "@/context/DataContext";
 
 const doto = Doto({
   variable: "--font-doto",
@@ -48,10 +51,16 @@ export default function RootLayout({
   return (
     <html lang="es" className={`${doto.variable} ${spaceGrotesk.variable} ${spaceMono.variable} h-full`}>
       <body className="min-h-full bg-black text-[#E8E8E8] antialiased">
-        <div className="mx-auto flex min-h-screen max-w-md flex-col">
-          <main className="flex-1 px-4 pb-24 pt-6">{children}</main>
-        </div>
-        <BottomNav />
+        <AuthProvider>
+          <DataProvider>
+            <div className="mx-auto flex min-h-screen max-w-md flex-col">
+              <main className="flex-1 px-4 pb-24 pt-6">
+                <AuthGate>{children}</AuthGate>
+              </main>
+            </div>
+            <BottomNav />
+          </DataProvider>
+        </AuthProvider>
       </body>
     </html>
   );

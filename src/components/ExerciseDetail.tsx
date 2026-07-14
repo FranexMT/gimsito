@@ -1,7 +1,6 @@
 "use client";
 
-import { useLiveQuery } from "dexie-react-hooks";
-import { db } from "@/lib/db";
+import { useWorkoutData } from "@/context/DataContext";
 import { computeExerciseRank } from "@/lib/ranking";
 import type { Exercise } from "@/types/exercise";
 import ExerciseGif from "@/components/ExerciseGif";
@@ -10,10 +9,10 @@ import LogSetForm from "@/components/LogSetForm";
 import { CATEGORY_LABEL_ES } from "@/lib/exercises";
 
 export default function ExerciseDetail({ exercise }: { exercise: Exercise }) {
-  const logs = useLiveQuery(() => db.logs.where("exerciseId").equals(exercise.id).reverse().sortBy("date"), [exercise.id]);
-  const bodyWeight = useLiveQuery(async () => (await db.settings.get("bodyWeight"))?.bodyWeightKg ?? 70, []);
+  const { logs: allLogs, profile } = useWorkoutData();
+  const logs = allLogs.filter((l) => l.exerciseId === exercise.id).sort((a, b) => b.date.localeCompare(a.date));
 
-  const rank = logs && bodyWeight !== undefined ? computeExerciseRank(exercise, logs, bodyWeight) : null;
+  const rank = computeExerciseRank(exercise, allLogs, profile.bodyWeightKg);
 
   return (
     <div className="flex flex-col gap-6">
@@ -26,16 +25,14 @@ export default function ExerciseDetail({ exercise }: { exercise: Exercise }) {
           <p className="font-mono text-[11px] uppercase tracking-[0.04em]" style={{ color: "var(--text-secondary)" }}>
             {CATEGORY_LABEL_ES[exercise.category] ?? exercise.category} · {exercise.equipment}
           </p>
-          {rank && (
-            <div className="mt-2 flex items-center gap-2">
-              <TierBadge tier={rank.tier} size="sm" />
-              {rank.currentValue > 0 && (
-                <span className="font-mono text-[11px]" style={{ color: "var(--text-secondary)" }}>
-                  {rank.isStandardLift && rank.nextTierValue ? `1RM ${rank.currentValue}kg` : `Récord ${rank.currentValue}`}
-                </span>
-              )}
-            </div>
-          )}
+          <div className="mt-2 flex items-center gap-2">
+            <TierBadge tier={rank.tier} size="sm" />
+            {rank.currentValue > 0 && (
+              <span className="font-mono text-[11px]" style={{ color: "var(--text-secondary)" }}>
+                {rank.isStandardLift && rank.nextTierValue ? `1RM ${rank.currentValue}kg` : `Récord ${rank.currentValue}`}
+              </span>
+            )}
+          </div>
         </div>
       </div>
 
@@ -62,7 +59,7 @@ export default function ExerciseDetail({ exercise }: { exercise: Exercise }) {
         <LogSetForm exerciseId={exercise.id} />
       </div>
 
-      {logs && logs.length > 0 && (
+      {logs.length > 0 && (
         <div style={{ borderTop: "1px solid var(--border)", paddingTop: 12 }}>
           <p className="mb-2 font-mono text-[11px] uppercase tracking-[0.08em]" style={{ color: "var(--text-secondary)" }}>
             Historial

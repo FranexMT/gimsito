@@ -1,40 +1,54 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { useLiveQuery } from "dexie-react-hooks";
-import { db, setBodyWeight, setProfile, clearAllData } from "@/lib/db";
-import { ACHIEVEMENTS, CATEGORY_LABEL, isUnlocked, countUnlocked, type AchievementCategory } from "@/lib/achievements";
+import { useMemo, useRef, useState } from "react";
+import Image from "next/image";
+import { useWorkoutData } from "@/context/DataContext";
+import { useAuth } from "@/context/AuthContext";
+import { ACHIEVEMENTS, CATEGORY_LABEL, type AchievementCategory } from "@/lib/achievements";
 import AchievementRow from "@/components/AchievementRow";
 
 const CATEGORIES: AchievementCategory[] = ["constancia", "fuerza", "exploracion", "volumen"];
 
 export default function ProfilePage() {
-  const logs = useLiveQuery(() => db.logs.toArray(), []);
-  const settings = useLiveQuery(() => db.settings.get("bodyWeight"), []);
-  const profileSettings = useLiveQuery(() => db.settings.get("profile"), []);
+  const { logs, profile, unlockedAchievementIds, updateProfile, uploadAvatar, clearAllData } = useWorkoutData();
+  const { signOut } = useAuth();
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [name, setName] = useState<string | null>(null);
   const [bodyWeight, setBodyWeightInput] = useState<string | null>(null);
   const [height, setHeight] = useState<string | null>(null);
   const [clearState, setClearState] = useState<"idle" | "confirm" | "done">("idle");
+  const [avatarError, setAvatarError] = useState<string | null>(null);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
 
-  const displayName = name ?? profileSettings?.name ?? "";
-  const displayWeight = bodyWeight ?? String(settings?.bodyWeightKg ?? 70);
-  const displayHeight = height ?? (profileSettings?.heightCm != null ? String(profileSettings.heightCm) : "");
+  const displayName = name ?? profile.name;
+  const displayWeight = bodyWeight ?? String(profile.bodyWeightKg);
+  const displayHeight = height ?? (profile.heightCm != null ? String(profile.heightCm) : "");
 
-  const ctx = useMemo(
-    () => ({ logs: logs ?? [], bodyWeightKg: settings?.bodyWeightKg ?? 70 }),
-    [logs, settings]
-  );
-
-  const unlockedCount = logs ? countUnlocked(ctx) : 0;
+  const ctx = useMemo(() => ({ logs, bodyWeightKg: profile.bodyWeightKg }), [logs, profile.bodyWeightKg]);
+  const unlockedCount = unlockedAchievementIds.size;
 
   async function handleSave() {
-    if (bodyWeight !== null) {
-      const n = Number(bodyWeight);
-      if (n > 0) await setBodyWeight(n);
+    await updateProfile({
+      name: displayName.trim(),
+      heightCm: height !== null && height !== "" ? Number(height) : profile.heightCm,
+      bodyWeightKg: bodyWeight !== null && Number(bodyWeight) > 0 ? Number(bodyWeight) : profile.bodyWeightKg,
+    });
+  }
+
+  async function handleAvatarChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setAvatarError(null);
+    setUploadingAvatar(true);
+    try {
+      await uploadAvatar(file);
+    } catch {
+      setAvatarError("No se pudo subir la imagen.");
+    } finally {
+      setUploadingAvatar(false);
+      e.target.value = "";
     }
-    await setProfile({ name: displayName.trim(), heightCm: height !== null && height !== "" ? Number(height) : (profileSettings?.heightCm ?? null) });
   }
 
   async function handleClear() {
@@ -59,12 +73,19 @@ export default function ProfilePage() {
       </p>
 
       <div className="flex items-center gap-4">
-        <div
-          className="flex h-16 w-16 shrink-0 items-center justify-center rounded-lg"
+        <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          className="relative flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-lg"
           style={{ border: "1px solid var(--border-visible)", fontFamily: "var(--font-display)", fontSize: 32, color: "var(--text-display)" }}
         >
-          {initial}
-        </div>
+          {profile.avatarUrl ? (
+            <Image src={profile.avatarUrl} alt="Avatar" fill unoptimized className="object-cover" />
+          ) : (
+            initial
+          )}
+        </button>
+        <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleAvatarChange} />
         <div className="flex-1">
           <input
             value={displayName}
@@ -75,8 +96,13 @@ export default function ProfilePage() {
             style={{ color: "var(--text-display)", borderBottom: "1px solid var(--border-visible)" }}
           />
           <p className="mt-1.5 font-mono text-[11px]" style={{ color: "var(--text-secondary)" }}>
-            {unlockedCount}/{ACHIEVEMENTS.length} logros desbloqueados
+            {uploadingAvatar ? "Subiendo foto..." : `${unlockedCount}/${ACHIEVEMENTS.length} logros desbloqueados`}
           </p>
+          {avatarError && (
+            <p className="mt-1 font-mono text-[11px]" style={{ color: "var(--accent)" }}>
+              [ ERROR ] {avatarError}
+            </p>
+          )}
         </div>
       </div>
 
@@ -123,14 +149,19 @@ export default function ProfilePage() {
             </p>
             <ul>
               {ACHIEVEMENTS.filter((a) => a.category === cat).map((a) => (
-                <AchievementRow key={a.id} achievement={a} progress={logs ? a.progress(ctx) : 0} unlocked={logs ? isUnlocked(a, ctx) : false} />
+                <AchievementRow
+                  key={a.id}
+                  achievement={a}
+                  progress={a.progress(ctx)}
+                  unlocked={unlockedAchievementIds.has(a.id)}
+                />
               ))}
             </ul>
           </div>
         ))}
       </div>
 
-      <div style={{ borderTop: "1px solid var(--border)", paddingTop: 16 }}>
+      <div className="flex flex-col gap-3" style={{ borderTop: "1px solid var(--border)", paddingTop: 16 }}>
         <button
           onClick={handleClear}
           className="w-full rounded-full py-3 font-mono text-[11px] uppercase tracking-[0.06em]"
@@ -142,6 +173,13 @@ export default function ProfilePage() {
           {clearState === "idle" && "Borrar todos los datos"}
           {clearState === "confirm" && "¿Seguro? Toca de nuevo"}
           {clearState === "done" && "[ Borrado ]"}
+        </button>
+        <button
+          onClick={() => signOut()}
+          className="w-full rounded-full py-3 font-mono text-[11px] uppercase tracking-[0.06em]"
+          style={{ color: "var(--text-disabled)" }}
+        >
+          Cerrar sesión
         </button>
       </div>
     </div>

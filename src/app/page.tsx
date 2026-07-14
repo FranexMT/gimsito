@@ -1,28 +1,24 @@
 "use client";
 
 import Link from "next/link";
-import { useLiveQuery } from "dexie-react-hooks";
 import { Dumbbell, Trophy } from "lucide-react";
-import { db } from "@/lib/db";
+import { useWorkoutData } from "@/context/DataContext";
 import { exercises, getExerciseById } from "@/lib/exercises";
 import { computeExerciseRank, tierScore, globalLevel } from "@/lib/ranking";
 import { countUnlocked, ACHIEVEMENTS } from "@/lib/achievements";
 import ExerciseGif from "@/components/ExerciseGif";
 
 export default function Home() {
-  const logs = useLiveQuery(() => db.logs.toArray(), []);
-  const bodyWeight = useLiveQuery(async () => (await db.settings.get("bodyWeight"))?.bodyWeightKg ?? 70, []);
-  const profile = useLiveQuery(() => db.settings.get("profile"), []);
+  const { logs, profile, loading } = useWorkoutData();
+  const bodyWeight = profile.bodyWeightKg;
 
-  const loading = !logs || bodyWeight === undefined;
-
-  const loggedExerciseIds = loading ? [] : Array.from(new Set(logs!.map((l) => l.exerciseId)));
-  const ranks = loading ? [] : loggedExerciseIds.map((id) => computeExerciseRank(getExerciseById(id)!, logs!, bodyWeight!));
+  const loggedExerciseIds = loading ? [] : Array.from(new Set(logs.map((l) => l.exerciseId)));
+  const ranks = loading ? [] : loggedExerciseIds.map((id) => computeExerciseRank(getExerciseById(id)!, logs, bodyWeight));
   const avgTier = ranks.length > 0 ? ranks.reduce((s, r) => s + tierScore(r.tier), 0) / ranks.length : 0;
-  const unlockedCount = loading ? 0 : countUnlocked({ logs: logs!, bodyWeightKg: bodyWeight! });
+  const unlockedCount = loading ? 0 : countUnlocked({ logs, bodyWeightKg: bodyWeight });
 
-  const recentLogs = loading ? [] : [...logs!].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 5);
-  const initial = (profile?.name ?? "").trim().charAt(0).toUpperCase() || "?";
+  const recentLogs = loading ? [] : [...logs].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 5);
+  const initial = profile.name.trim().charAt(0).toUpperCase() || "?";
 
   return (
     <div className="flex flex-col gap-8">

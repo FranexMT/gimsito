@@ -1,13 +1,15 @@
 "use client";
 
 import { useState } from "react";
-import { db } from "@/lib/db";
-import { estimateOneRepMax } from "@/lib/oneRepMax";
+import { useWorkoutData } from "@/context/DataContext";
 
 export default function LogSetForm({ exerciseId }: { exerciseId: string }) {
+  const { addLog } = useWorkoutData();
   const [weight, setWeight] = useState("");
   const [reps, setReps] = useState("");
   const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [pending, setPending] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -16,18 +18,19 @@ export default function LogSetForm({ exerciseId }: { exerciseId: string }) {
     if (!repsNum || repsNum <= 0) return;
     if (weightNum < 0) return;
 
-    await db.logs.add({
-      exerciseId,
-      weight: weightNum,
-      reps: repsNum,
-      date: new Date().toISOString(),
-      oneRepMax: estimateOneRepMax(weightNum, repsNum),
-    });
-
-    setWeight("");
-    setReps("");
-    setSaved(true);
-    setTimeout(() => setSaved(false), 1500);
+    setPending(true);
+    setError(null);
+    try {
+      await addLog(exerciseId, weightNum, repsNum);
+      setWeight("");
+      setReps("");
+      setSaved(true);
+      setTimeout(() => setSaved(false), 1500);
+    } catch {
+      setError("No se pudo guardar. Revisa tu conexión e intenta de nuevo.");
+    } finally {
+      setPending(false);
+    }
   }
 
   return (
@@ -68,12 +71,18 @@ export default function LogSetForm({ exerciseId }: { exerciseId: string }) {
           />
         </label>
       </div>
+      {error && (
+        <p className="font-mono text-[11px]" style={{ color: "var(--accent)" }}>
+          [ ERROR ] {error}
+        </p>
+      )}
       <button
         type="submit"
-        className="rounded-full py-3 font-mono text-[11px] uppercase tracking-[0.06em]"
+        disabled={pending}
+        className="rounded-full py-3 font-mono text-[11px] uppercase tracking-[0.06em] disabled:opacity-40"
         style={{ background: "var(--text-display)", color: "var(--black)" }}
       >
-        {saved ? "[ Guardado ]" : "Guardar serie"}
+        {saved ? "[ Guardado ]" : pending ? "···" : "Guardar serie"}
       </button>
     </form>
   );
